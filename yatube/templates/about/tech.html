@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Технологии{% endblock %}
+{% block content %}
+{% comment %} Колонки с отступом сверху и снизу {% endcomment %}
+  <div class="container py-5">
+    <div class="row">
+      <h1>Вот что я умею</h1>
+      {% comment %}
+        Боковой блок со списком технологий 
+        Займет всю ширину блока на мобильном
+        и 25% при размерах экрана ≥768px
+      {% endcomment %}
+      <aside class="col-12 col-md-9">
+        <ul class="list-group list-group-flush">
+          <li class="list-group-item">
+            Python - знание базового синтаксиса 
+          </li>
+          <li class="list-group-item">
+            Django - все, что вы видите на этом сайте
+          </li>
+        </ul>
+      </aside>
+      {% comment %}
+        Статья  
+        Займет всю ширину блока на мобильном
+        и 75% при размерах экрана ≥768px
+      {% endcomment %}
+    </div>
+    <br>
+    <h4>Что было сложным?</h4>
+    <p style="margin-bottom: 20px">
+      Пока что самое сложное - формы Django, но потихоньку разбираюсь <br>
+      А ещё, создавая эту страницу, я понимаю, что вёрстка меня маленько бесит) <br>
+      Не жалею, что учусь бэкэнду <br>
+    </p>
+  </div>
+{% endblock %}
