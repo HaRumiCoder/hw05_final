@@ -111,8 +111,9 @@ def profile_follow(request, username):
     try:
         if follow.clean():
             follow.save()
-    except ValidationError:
-        return render(request, 'core/follow_errors.html')
+    except ValidationError as error:
+        return render(request, 'core/follow_errors.html', {
+            'error': error.message})
     return redirect('posts:profile', username)
 
 
