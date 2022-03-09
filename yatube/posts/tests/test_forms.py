@@ -1,18 +1,19 @@
 import shutil
 import tempfile
 
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django import forms
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, override_settings, TestCase
+from django.urls import reverse
 
 from posts.models import Post, Group, User, Comment
 
-CREATE = reverse('posts:post_create')
+USERNAME_NOT_AUTHOR = 'NotAuthor'
 USERNAME = 'user'
+CREATE = reverse('posts:post_create')
 PROFILE = reverse('posts:profile', args=[USERNAME])
-
+LOGIN = reverse('users:login')
 POST_TEXT = 'Текстовый текст'
 NEW_POST_TEXT = 'Новый тестовый тект'
 EDIT_POST_TEXT = 'Изменённый тестовый текст'
@@ -41,6 +42,7 @@ UPLOADED_IMAGE2 = SimpleUploadedFile(
     content=SMALL_IMAGE,
     content_type='image/gif'
 )
+UNEDITED_TEXT = 'Нередактируемый пост'
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
 
@@ -50,6 +52,7 @@ class PostFormTest(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.user = User.objects.create_user(username=USERNAME)
+        cls.not_author = User.objects.create_user(username=USERNAME_NOT_AUTHOR)
         cls.group1 = Group.objects.create(
             title=GROUP_TITLE1,
             slug=SLUG1,
@@ -68,26 +71,21 @@ class PostFormTest(TestCase):
         cls.EDIT = reverse('posts:post_edit', args=[cls.post.pk])
         cls.DETAIL = reverse('posts:post_detail', args=[cls.post.pk])
         cls.ADD_COMMENT = reverse('posts:add_comment', args=[cls.post.pk])
-        cls.comment = Comment.objects.create(
-            text=COMMENT_TEXT,
-            author=cls.user,
-            post=cls.post
-        )
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+        cls.guest = Client()
+        cls.another = Client()
+        cls.another.force_login(cls.not_author)
 
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
-    def setUp(self):
-        self.authorized_client = Client()
-        self.authorized_client.force_login(self.user)
-        self.guest = Client()
-
     def test_create_post(self):
         '''
         При отправке валидной формы со страницы создания поста
-        создаётся новая запись в базе данны
+        создаётся новая запись в базе данных.
         '''
         existing_posts = set(Post.objects.all())
         posts_count = Post.objects.count()
@@ -116,6 +114,25 @@ class PostFormTest(TestCase):
             form_data['image'].name
         )
 
+    def test_guest_can_not_create_post(self):
+        '''
+        При отправке формы со страницы создания поста
+        гость не создаёт новую запись в базе данных.
+        '''
+        existing_posts = set(Post.objects.all())
+        form_data = {
+            'text': NEW_POST_TEXT,
+            'group': self.group1.pk,
+            'image': UPLOADED_IMAGE
+        }
+        response = self.authorized_client.post(
+            CREATE,
+            data=form_data,
+            follow=True
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(existing_posts, set(Post.objects.all()))
+
     def test_edit_post(self):
         '''
         При отправке валидной формы со страницы редактирования поста
@@ -124,7 +141,8 @@ class PostFormTest(TestCase):
         posts_count = Post.objects.count()
         form_data = {
             'text': EDIT_POST_TEXT,
-            'group': self.group2.pk
+            'group': self.group2.pk,
+            'image': UPLOADED_IMAGE2
         }
         response = self.authorized_client.post(
             self.EDIT,
@@ -137,6 +155,50 @@ class PostFormTest(TestCase):
         self.assertEqual(post.text, form_data['text'])
         self.assertEqual(post.group.pk, form_data['group'])
         self.assertEqual(post.author, self.post.author)
+        post_image_name = post.image.name
+        self.assertEqual(
+            post_image_name[post_image_name.find('/') + 1:],
+            form_data['image'].name
+        )
+
+    def test_guest_can_not_edit_post(self):
+        '''
+        При отправке валидной формы со страницы редактирования поста
+        гость и не автор не измененяют пост в базе данных.
+        '''
+        unedited_post = Post.objects.create(
+            text=UNEDITED_TEXT,
+            group=self.group1,
+            author=self.user,
+            image=UPLOADED_IMAGE
+        )
+        EDIT2 = reverse('posts:post_edit', args=[unedited_post.pk])
+        POST_DETAIL = reverse('posts:post_detail', args=[unedited_post.pk])
+        form_data = {
+            'text': EDIT_POST_TEXT,
+            'group': self.group2.pk,
+            'image': UPLOADED_IMAGE2
+        }
+        clients = [
+            [self.guest, LOGIN + '?next=' + EDIT2],
+            [self.another, POST_DETAIL]
+        ]
+        for client, redirect in clients:
+            with self.subTest(client=client):
+                response = client.post(
+                    EDIT2,
+                    data=form_data,
+                    follow=True
+                )
+                self.assertRedirects(response, redirect)
+                post = Post.objects.get(pk=unedited_post.pk)
+                self.assertEqual(post.text, unedited_post.text)
+                self.assertEqual(post.group, unedited_post.group)
+                self.assertEqual(post.author, unedited_post.author)
+                self.assertEqual(
+                    post.image.name,
+                    unedited_post.image.name
+                )
 
     def test_pages_show_correct_form(self):
         "Проверка формы страниц"
@@ -152,11 +214,11 @@ class PostFormTest(TestCase):
                 self.assertIsInstance(form.fields.get('group'), (
                     forms.models.ModelChoiceField))
 
-    def test_create_comment_not_for_guest(self):
+    def test_guest_can_not_create_comment(self):
         '''
         Проверка того, что гость не может создать комментарий.
         '''
-        comments_count = Comment.objects.count()
+        existing_comments = set(Comment.objects.all())
         form_data = {
             'text': 'Комментарий',
         }
@@ -166,12 +228,7 @@ class PostFormTest(TestCase):
             follow=True
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Comment.objects.count(), comments_count)
-        # Проверка того, что другие комментарии не поменялись
-        response = self.guest.get(self.DETAIL)
-        comment = response.context["post"].comments.get(pk=self.comment.pk)
-        self.assertEqual(comment.text, self.comment.text)
-        self.assertEqual(comment.author, self.comment.author)
+        self.assertEqual(existing_comments, set(Comment.objects.all()))
 
     def test_create_comment(self):
         '''

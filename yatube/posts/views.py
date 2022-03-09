@@ -1,3 +1,4 @@
+from django.forms import ValidationError
 from django.shortcuts import get_object_or_404, render
 from django.core.paginator import Paginator
 from django.shortcuts import redirect
@@ -28,10 +29,9 @@ def group_posts(request, slug):
 
 def profile(request, username):
     user = get_object_or_404(User, username=username)
-    if request.user.is_authenticated:
-        following = request.user.follower.filter(author=user).exists()
-    else:
-        following = False
+    following = request.user.is_authenticated and (
+        set(user.following.all()) | set(request.user.follower.all())
+    )
     context = {
         "page_obj": paginator_obj(user.posts.all(), POST_PER_PAGE, request),
         "author": user,
@@ -41,12 +41,10 @@ def profile(request, username):
 
 
 def post_detail(request, post_id):
-    post = get_object_or_404(Post, pk=post_id)
-    form = CommentForm(request.POST or None)
     return render(request, "posts/post_detail.html", {
-        "post": post,
-        "form": form,
-        "comments": post.comments.all()})
+        "post": get_object_or_404(Post, pk=post_id),
+        "form": CommentForm(request.POST or None)
+    })
 
 
 @login_required
@@ -85,7 +83,7 @@ def post_edit(request, post_id):
 
 @login_required
 def add_comment(request, post_id):
-    post = Post.objects.get(pk=post_id)
+    post = get_object_or_404(Post, pk=post_id)
     form = CommentForm(request.POST or None)
     if form.is_valid():
         comment = form.save(commit=False)
@@ -98,27 +96,30 @@ def add_comment(request, post_id):
 @login_required
 def follow_index(request):
     posts = Post.objects.filter(author__following__user=request.user)
-    context = {
-        'page_obj': paginator_obj(posts, POST_PER_PAGE, request)}
-    return render(request, 'posts/follow.html', context)
+    return render(request, 'posts/follow.html', {
+        'page_obj': paginator_obj(posts, POST_PER_PAGE, request)
+    })
 
 
 @login_required
 def profile_follow(request, username):
-    author = User.objects.get(username=username)
-    if request.user.follower.filter(author=author).exists():
-        return redirect('posts:profile', username)
-    if request.user.username == username:
-        return redirect('posts:profile', username)
-    Follow.objects.create(
+    author = get_object_or_404(User, username=username)
+    follow = Follow(
         user=request.user,
         author=author
     )
+    try:
+        if follow.clean():
+            follow.save()
+    except ValidationError:
+        return render(request, 'core/follow_errors.html')
     return redirect('posts:profile', username)
 
 
 @login_required
 def profile_unfollow(request, username):
-    author = User.objects.get(username=username)
-    author.following.filter(user=request.user).delete()
+    follow = get_object_or_404(
+        get_object_or_404(User, username=username).following,
+        user=request.user)
+    follow.delete()
     return redirect('posts:profile', username)

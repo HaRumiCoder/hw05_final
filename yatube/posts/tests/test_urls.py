@@ -1,7 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from posts.models import Group, Post, User
+from posts.models import Group, Post, User, Follow
 
 GROUP_TITLE = 'Тестовая группа'
 GROUP_SLUG = 'test-slug'
@@ -16,6 +16,9 @@ PROFILE = reverse('posts:profile', args=[USERNAME])
 UNEXISTING_PAGE = '/unexisting_page/'
 CREATE = reverse('posts:post_create')
 LOGIN = reverse('users:login')
+FOLLOW = reverse('posts:follow_index')
+PROFILE_FOLLOW = reverse('posts:profile_follow', args=[USERNAME])
+PROFILE_UNFOLLOW = reverse('posts:profile_unfollow', args=[USERNAME])
 
 
 class PostURLTests(TestCase):
@@ -37,19 +40,26 @@ class PostURLTests(TestCase):
         cls.POST_EDIT = reverse('posts:post_edit', args=[cls.post.pk])
         cls.CREATE_REDIRECT_GUEST = LOGIN + '?next=' + CREATE
         cls.EDIT_REDIRECT_GUEST = LOGIN + '?next=' + cls.POST_EDIT
-
-    def setUp(self):
+        cls.FOLLOW_REDIRECT_GUEST = LOGIN + '?next=' + PROFILE_FOLLOW
+        cls.UNFOLLOW_REDIRECT_GUEST = LOGIN + '?next=' + PROFILE_UNFOLLOW
+        cls.FOLLOW_INDEX_REDIRECT_GUEST = LOGIN + '?next=' + FOLLOW
+        cls.COMMENT = reverse('posts:add_comment', args=[cls.post.pk])
+        cls.COMMENT_REDIRECT_GUEST = LOGIN + '?next=' + cls.COMMENT
         # гость
-        self.guest = Client()
+        cls.guest = Client()
         # авторизованный автор
-        self.author = Client()
-        self.author.force_login(self.user)
+        cls.author = Client()
+        cls.author.force_login(cls.user)
         # обычный авторизованный
-        self.another = Client()
-        self.another.force_login(self.not_author)
+        cls.another = Client()
+        cls.another.force_login(cls.not_author)
 
     def test_url_exists(self):
-        '''Проверка доступа страниц'''
+        '''Проверка доступа страниц.'''
+        self.follow = Follow.objects.create(
+            user=self.not_author,
+            author=self.user
+        )
         urls = [
             [INDEX, self.guest, 200],
             [GROUP_LIST, self.guest, 200],
@@ -60,18 +70,35 @@ class PostURLTests(TestCase):
             [self.POST_EDIT, self.author, 200],
             [CREATE, self.guest, 302],
             [self.POST_EDIT, self.guest, 302],
-            [self.POST_EDIT, self.another, 302]
+            [self.POST_EDIT, self.another, 302],
+            [FOLLOW, self.author, 200],
+            [FOLLOW, self.guest, 302],
+            [PROFILE_FOLLOW, self.author, 200],
+            [PROFILE_FOLLOW, self.guest, 302],
+            [PROFILE_UNFOLLOW, self.author, 404],
+            [PROFILE_UNFOLLOW, self.another, 302],
+            [PROFILE_UNFOLLOW, self.guest, 302],
+            [self.COMMENT, self.guest, 302],
+            [self.COMMENT, self.author, 302]
         ]
         for url, client, status_code in urls:
             with self.subTest(url=url, client=client):
                 self.assertEqual(client.get(url).status_code, status_code)
+        self.follow.delete()
 
     def test_url_redirects(self):
-        '''Проверка перенаправления страниц'''
+        '''Проверка перенаправления страниц.'''
         urls = [
             [CREATE, self.guest, self.CREATE_REDIRECT_GUEST],
             [self.POST_EDIT, self.guest, self.EDIT_REDIRECT_GUEST],
-            [self.POST_EDIT, self.another, self.POST_DETAIL]
+            [self.POST_EDIT, self.another, self.POST_DETAIL],
+            [self.COMMENT, self.author, self.POST_DETAIL],
+            [self.COMMENT, self.guest, self.COMMENT_REDIRECT_GUEST],
+            [PROFILE_FOLLOW, self.another, PROFILE],
+            [PROFILE_FOLLOW, self.guest, self.FOLLOW_REDIRECT_GUEST],
+            [PROFILE_UNFOLLOW, self.another, PROFILE],
+            [PROFILE_UNFOLLOW, self.guest, self.UNFOLLOW_REDIRECT_GUEST],
+            [FOLLOW, self.guest, self.FOLLOW_INDEX_REDIRECT_GUEST]
         ]
         for url, client, finnaly_url in urls:
             with self.subTest(url=url, client=client, finnaly_url=finnaly_url):
@@ -85,7 +112,8 @@ class PostURLTests(TestCase):
             PROFILE: 'posts/profile.html',
             self.POST_DETAIL: 'posts/post_detail.html',
             self.POST_EDIT: 'posts/create_post.html',
-            CREATE: 'posts/create_post.html'
+            CREATE: 'posts/create_post.html',
+            FOLLOW: 'posts/follow.html'
         }
         for address, template in templates_url_names.items():
             with self.subTest(address=address):

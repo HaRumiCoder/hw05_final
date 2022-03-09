@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from tkinter.tix import TEXT
 
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
@@ -70,29 +71,39 @@ class PostViewsTests(TestCase):
         cls.FOLLOW = reverse("posts:profile_follow", args=[cls.user.username])
         cls.UNFOLLOW = reverse(
             "posts:profile_unfollow", args=[cls.user.username])
+        cls.authorized_client = Client()
+        cls.authorized_client.force_login(cls.user)
+        cls.follower_client = Client()
+        cls.follower_client.force_login(cls.follower_user)
+        cls.non_follower_client = Client()
+        cls.non_follower_client.force_login(cls.non_follower_user)
 
     @classmethod
     def tearDownClass(cls):
         super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
-    def setUp(self):
-        self.authorized_client = Client()
-        self.authorized_client.force_login(self.user)
-        self.follower_client = Client()
-        self.follower_client.force_login(self.follower_user)
-        self.non_follower_client = Client()
-        self.non_follower_client.force_login(self.non_follower_user)
+    # def setUp(self):
+    #     self.authorized_client = Client()
+    #     self.authorized_client.force_login(self.user)
+    #     self.follower_client = Client()
+    #     self.follower_client.force_login(self.follower_user)
+    #     self.non_follower_client = Client()
+    #     self.non_follower_client.force_login(self.non_follower_user)
 
     def test_post_exists_in_context(self):
         """
         Проверка поста на страницах index,
-        group_list, profile, post_detail.
+        group_list, profile, post_detail, follow_index
         """
-        pages = {INDEX, GROUP_LIST, PROFILE, self.POST_DETAIL}
+        pages = {INDEX, GROUP_LIST, PROFILE, self.POST_DETAIL, FOLLOW_INDEX}
+        Follow.objects.get_or_create(
+            user=self.follower_user,
+            author=self.user
+        )
         for page in pages:
             with self.subTest(page=page):
-                response = self.authorized_client.get(page)
+                response = self.follower_client.get(page)
                 if page == self.POST_DETAIL:
                     post = response.context["post"]
                 else:
@@ -106,9 +117,12 @@ class PostViewsTests(TestCase):
                 self.assertEqual(post.image, self.post.image)
 
     def test_post_not_exists_in_context(self):
-        """Пост не существует в другой группе."""
-        response = self.authorized_client.get(GROUP_LIST_WITHOUT_POSTS)
-        self.assertNotIn(self.post, response.context["page_obj"])
+        """Пост не существования поста в других страницах."""
+        urls = [GROUP_LIST_WITHOUT_POSTS, FOLLOW_INDEX]
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.non_follower_client.get(url)
+                self.assertNotIn(self.post, response.context["page_obj"])
 
     def test_group_show_correct_context(self):
         "Проверка контекста страницы post_detail"
@@ -152,52 +166,35 @@ class PostViewsTests(TestCase):
                 self.assertEqual(len(response.context["page_obj"]), contains)
 
     def test_index_cache(self):
-        deleted_post = Post.objects.create(
-            text='Временный пост',
-            author=self.user
-        )
         response1 = self.authorized_client.get(INDEX)
-        deleted_post.delete()
+        if Post.objects.all().count() > 1:
+            Post.objects.exclude(pk=self.post.pk).delete()
+        else:
+            Post.objects.create(
+                text=TEXT,
+                group=self.group,
+                author=self.user
+            )
         response2 = self.authorized_client.get(INDEX)
         self.assertEqual(response1.content, response2.content)
         cache.clear()
         response3 = self.authorized_client.get(INDEX)
         self.assertNotEqual(response2.content, response3.content)
 
-    def test_following_and_unfollowing(self):
-        '''Проверка подписки и отписки на автора.'''
+    def test_following(self):
+        '''Проверка подписки на автора.'''
         followes_count = Follow.objects.count()
-        response = self.follower_client.get(self.FOLLOW)
-        self.assertRedirects(response, PROFILE)
+        self.follower_client.get(self.FOLLOW)
         self.assertEqual(followes_count + 1, Follow.objects.count())
         self.assertTrue(self.follower_user.follower.filter(author=self.user))
-        response = self.follower_client.get(self.UNFOLLOW)
-        self.assertRedirects(response, PROFILE)
-        self.assertEqual(followes_count, Follow.objects.count())
-        self.assertFalse(self.follower_user.follower.filter(author=self.user))
 
-    def test_follow_index_for_follower(self):
-        '''
-        Проверка отображения поста у подписчика
-        на странице follow_index.
-        '''
-        Follow.objects.create(
+    def text_unfollowing(self):
+        '''Проверка отписки на автора.'''
+        Follow.objects.get_or_create(
             user=self.follower_user,
             author=self.user
         )
-        response = self.follower_client.get(FOLLOW_INDEX)
-        self.assertIn(
-            self.user.posts.all()[0],
-            response.context.get('page_obj').object_list
-        )
-
-    def test_follow_index_for_not_follower(self):
-        '''
-        Проверка осутствия поста у неподписанного пользователя
-        на странице follow_index.
-        '''
-        response = self.non_follower_client.get(FOLLOW_INDEX)
-        self.assertNotIn(
-            self.user.posts.all()[0],
-            response.context.get('page_obj').object_list
-        )
+        followes_count = Follow.objects.count()
+        self.follower_client.get(self.UNFOLLOW)
+        self.assertEqual(followes_count, Follow.objects.count())
+        self.assertFalse(self.follower_user.follower.filter(author=self.user))
