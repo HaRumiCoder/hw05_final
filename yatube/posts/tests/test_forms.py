@@ -83,9 +83,7 @@ class PostFormTest(TestCase):
         cls.authorized_client.force_login(cls.user)
         cls.another = Client()
         cls.another.force_login(cls.not_author)
-
-    def setUp(self):
-        self.guest = Client()
+        cls.guest = Client()
 
     @classmethod
     def tearDownClass(cls):
@@ -194,6 +192,7 @@ class PostFormTest(TestCase):
                 self.assertEqual(post.text, self.post.text)
                 self.assertEqual(post.group, self.post.group)
                 self.assertEqual(post.image, self.post.image)
+                self.assertEqual(post.author, self.post.author)
 
     def test_pages_show_correct_form(self):
         "Проверка формы страниц."

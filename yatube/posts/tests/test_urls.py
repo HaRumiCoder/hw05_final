@@ -1,8 +1,7 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from posts.models import (
-    Group, Post, User, FOLLOW_TO_YOURSELF_ERROR)
+from posts.models import Group, Post, User
 
 GROUP_TITLE = 'Тестовая группа'
 GROUP_SLUG = 'test-slug'
@@ -20,7 +19,6 @@ LOGIN = reverse('users:login')
 FOLLOW = reverse('posts:follow_index')
 PROFILE_FOLLOW = reverse('posts:profile_follow', args=[USERNAME])
 PROFILE_UNFOLLOW = reverse('posts:profile_unfollow', args=[USERNAME])
-FOLLOW_ERROR = reverse('posts:follow_error', args=[FOLLOW_TO_YOURSELF_ERROR])
 
 
 class PostURLTests(TestCase):
@@ -88,7 +86,7 @@ class PostURLTests(TestCase):
             [self.POST_EDIT, self.another, self.POST_DETAIL],
             [PROFILE_FOLLOW, self.another, PROFILE],
             [PROFILE_FOLLOW, self.guest, self.FOLLOW_REDIRECT_GUEST],
-            [PROFILE_FOLLOW, self.author, FOLLOW_ERROR],
+            [PROFILE_FOLLOW, self.author, PROFILE],
             [PROFILE_UNFOLLOW, self.another, PROFILE],
             [PROFILE_UNFOLLOW, self.guest, self.UNFOLLOW_REDIRECT_GUEST],
             [FOLLOW, self.guest, self.FOLLOW_INDEX_REDIRECT_GUEST]

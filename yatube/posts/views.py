@@ -1,4 +1,3 @@
-from django.forms import ValidationError
 from django.shortcuts import get_object_or_404, render
 from django.core.paginator import Paginator
 from django.shortcuts import redirect
@@ -101,30 +100,22 @@ def follow_index(request):
     })
 
 
-def follow_error(request, error):
-    return render(request, 'core/follow_errors.html', {
-        'error': error})
-
-
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
-    follow = Follow(
-        user=request.user,
-        author=author
-    )
-    try:
-        if follow.clean():
-            follow.save()
-    except ValidationError as error:
-        return redirect('posts:follow_error', error.message)
+    if (request.user.username != username
+            and not request.user.follower.filter(author=author).exists()):
+        Follow.objects.create(
+            user=request.user,
+            author=author
+        )
     return redirect('posts:profile', username)
 
 
 @login_required
 def profile_unfollow(request, username):
-    follow = get_object_or_404(
-        get_object_or_404(User, username=username).following,
-        user=request.user)
-    follow.delete()
+    get_object_or_404(
+        Follow,
+        user=request.user,
+        author__username=username).delete()
     return redirect('posts:profile', username)
