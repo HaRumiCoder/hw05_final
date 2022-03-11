@@ -1,7 +1,8 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from posts.models import Group, Post, User, Follow
+from posts.models import (
+    Group, Post, User, FOLLOW_TO_YOURSELF_ERROR)
 
 GROUP_TITLE = 'Тестовая группа'
 GROUP_SLUG = 'test-slug'
@@ -19,6 +20,7 @@ LOGIN = reverse('users:login')
 FOLLOW = reverse('posts:follow_index')
 PROFILE_FOLLOW = reverse('posts:profile_follow', args=[USERNAME])
 PROFILE_UNFOLLOW = reverse('posts:profile_unfollow', args=[USERNAME])
+FOLLOW_ERROR = reverse('posts:follow_error', args=[FOLLOW_TO_YOURSELF_ERROR])
 
 
 class PostURLTests(TestCase):
@@ -38,13 +40,11 @@ class PostURLTests(TestCase):
         )
         cls.POST_DETAIL = reverse('posts:post_detail', args=[cls.post.pk])
         cls.POST_EDIT = reverse('posts:post_edit', args=[cls.post.pk])
-        cls.CREATE_REDIRECT_GUEST = LOGIN + '?next=' + CREATE
-        cls.EDIT_REDIRECT_GUEST = LOGIN + '?next=' + cls.POST_EDIT
-        cls.FOLLOW_REDIRECT_GUEST = LOGIN + '?next=' + PROFILE_FOLLOW
-        cls.UNFOLLOW_REDIRECT_GUEST = LOGIN + '?next=' + PROFILE_UNFOLLOW
-        cls.FOLLOW_INDEX_REDIRECT_GUEST = LOGIN + '?next=' + FOLLOW
-        cls.COMMENT = reverse('posts:add_comment', args=[cls.post.pk])
-        cls.COMMENT_REDIRECT_GUEST = LOGIN + '?next=' + cls.COMMENT
+        cls.CREATE_REDIRECT_GUEST = f'{LOGIN}?next={CREATE}'
+        cls.EDIT_REDIRECT_GUEST = f'{LOGIN}?next={cls.POST_EDIT}'
+        cls.FOLLOW_REDIRECT_GUEST = f'{LOGIN}?next={PROFILE_FOLLOW}'
+        cls.UNFOLLOW_REDIRECT_GUEST = f'{LOGIN}?next={PROFILE_UNFOLLOW}'
+        cls.FOLLOW_INDEX_REDIRECT_GUEST = f'{LOGIN}?next={FOLLOW}'
         # гость
         cls.guest = Client()
         # авторизованный автор
@@ -56,10 +56,6 @@ class PostURLTests(TestCase):
 
     def test_url_exists(self):
         '''Проверка доступа страниц.'''
-        self.follow = Follow.objects.create(
-            user=self.not_author,
-            author=self.user
-        )
         urls = [
             [INDEX, self.guest, 200],
             [GROUP_LIST, self.guest, 200],
@@ -73,18 +69,16 @@ class PostURLTests(TestCase):
             [self.POST_EDIT, self.another, 302],
             [FOLLOW, self.author, 200],
             [FOLLOW, self.guest, 302],
-            [PROFILE_FOLLOW, self.author, 200],
+            [PROFILE_FOLLOW, self.author, 302],
             [PROFILE_FOLLOW, self.guest, 302],
+            [PROFILE_FOLLOW, self.another, 302],
             [PROFILE_UNFOLLOW, self.author, 404],
             [PROFILE_UNFOLLOW, self.another, 302],
             [PROFILE_UNFOLLOW, self.guest, 302],
-            [self.COMMENT, self.guest, 302],
-            [self.COMMENT, self.author, 302]
         ]
         for url, client, status_code in urls:
             with self.subTest(url=url, client=client):
                 self.assertEqual(client.get(url).status_code, status_code)
-        self.follow.delete()
 
     def test_url_redirects(self):
         '''Проверка перенаправления страниц.'''
@@ -92,10 +86,9 @@ class PostURLTests(TestCase):
             [CREATE, self.guest, self.CREATE_REDIRECT_GUEST],
             [self.POST_EDIT, self.guest, self.EDIT_REDIRECT_GUEST],
             [self.POST_EDIT, self.another, self.POST_DETAIL],
-            [self.COMMENT, self.author, self.POST_DETAIL],
-            [self.COMMENT, self.guest, self.COMMENT_REDIRECT_GUEST],
             [PROFILE_FOLLOW, self.another, PROFILE],
             [PROFILE_FOLLOW, self.guest, self.FOLLOW_REDIRECT_GUEST],
+            [PROFILE_FOLLOW, self.author, FOLLOW_ERROR],
             [PROFILE_UNFOLLOW, self.another, PROFILE],
             [PROFILE_UNFOLLOW, self.guest, self.UNFOLLOW_REDIRECT_GUEST],
             [FOLLOW, self.guest, self.FOLLOW_INDEX_REDIRECT_GUEST]

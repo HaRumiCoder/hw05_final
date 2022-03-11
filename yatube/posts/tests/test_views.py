@@ -1,20 +1,19 @@
 import shutil
 import tempfile
-from tkinter.tix import TEXT
 
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from django.conf import settings
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
 
-from posts.models import Group, Post, User, Follow
+from posts.models import Group, Follow, Post, User
 from posts.settings import POST_PER_PAGE
 
 GROUP_TITLE = "Тестовая группа"
 GROUP_SLUG = "test-slug"
 GROUP_DESCRIPTION = "Тестовое описание"
-POST_TEXT = "Тестовый текст поста 1"
+POST_TEXT = "Тестовый текст поста"
 GROUP_SLUG_WITHOUT_POST = "test-slug-without-post"
 GROUP_TITLE_WITHOUT_POST = "Тестовая группа без поста"
 USERNAME = "user"
@@ -83,21 +82,13 @@ class PostViewsTests(TestCase):
         super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
-    # def setUp(self):
-    #     self.authorized_client = Client()
-    #     self.authorized_client.force_login(self.user)
-    #     self.follower_client = Client()
-    #     self.follower_client.force_login(self.follower_user)
-    #     self.non_follower_client = Client()
-    #     self.non_follower_client.force_login(self.non_follower_user)
-
     def test_post_exists_in_context(self):
         """
         Проверка поста на страницах index,
         group_list, profile, post_detail, follow_index
         """
         pages = {INDEX, GROUP_LIST, PROFILE, self.POST_DETAIL, FOLLOW_INDEX}
-        Follow.objects.get_or_create(
+        Follow.objects.create(
             user=self.follower_user,
             author=self.user
         )
@@ -167,14 +158,7 @@ class PostViewsTests(TestCase):
 
     def test_index_cache(self):
         response1 = self.authorized_client.get(INDEX)
-        if Post.objects.all().count() > 1:
-            Post.objects.exclude(pk=self.post.pk).delete()
-        else:
-            Post.objects.create(
-                text=TEXT,
-                group=self.group,
-                author=self.user
-            )
+        Post.objects.all().delete()
         response2 = self.authorized_client.get(INDEX)
         self.assertEqual(response1.content, response2.content)
         cache.clear()
@@ -188,13 +172,13 @@ class PostViewsTests(TestCase):
         self.assertEqual(followes_count + 1, Follow.objects.count())
         self.assertTrue(self.follower_user.follower.filter(author=self.user))
 
-    def text_unfollowing(self):
+    def test_unfollowing(self):
         '''Проверка отписки на автора.'''
-        Follow.objects.get_or_create(
+        Follow.objects.create(
             user=self.follower_user,
             author=self.user
         )
         followes_count = Follow.objects.count()
         self.follower_client.get(self.UNFOLLOW)
-        self.assertEqual(followes_count, Follow.objects.count())
+        self.assertEqual(followes_count - 1, Follow.objects.count())
         self.assertFalse(self.follower_user.follower.filter(author=self.user))

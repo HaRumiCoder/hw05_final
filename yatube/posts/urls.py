@@ -27,4 +27,9 @@ urlpatterns = [
         views.profile_unfollow,
         name='profile_unfollow'
     ),
+    path(
+        'profile/follow/error/<error>/',
+        views.follow_error,
+        name='follow_error'
+    ),
 ]

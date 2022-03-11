@@ -101,6 +101,11 @@ def follow_index(request):
     })
 
 
+def follow_error(request, error):
+    return render(request, 'core/follow_errors.html', {
+        'error': error})
+
+
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
@@ -112,8 +117,7 @@ def profile_follow(request, username):
         if follow.clean():
             follow.save()
     except ValidationError as error:
-        return render(request, 'core/follow_errors.html', {
-            'error': error.message})
+        return redirect('posts:follow_error', error.message)
     return redirect('posts:profile', username)
 
 

@@ -2,16 +2,23 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
+RE_FOLLOW_ERROR = 'Повторная подписка'
+FOLLOW_TO_YOURSELF_ERROR = 'Подписка на себя'
+
 User = get_user_model()
 
 
 class Group(models.Model):
     title = models.CharField(max_length=200, verbose_name="Название")
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, verbose_name="Идентификатор")
     description = models.TextField(verbose_name="Описание")
 
     def __str__(self) -> str:
         return self.title
+
+    class Meta:
+        verbose_name = 'Группа'
+        verbose_name_plural = 'Группы'
 
 
 class Post(models.Model):
@@ -43,9 +50,7 @@ class Post(models.Model):
         verbose_name_plural = 'Посты'
 
     def __str__(self) -> str:
-        return (
-            f'{self.text[:15]}'
-        )
+        return self.text[:15]
 
 
 class Comment(models.Model):
@@ -69,9 +74,7 @@ class Comment(models.Model):
         verbose_name_plural = 'Комментарии'
 
     def __str__(self) -> str:
-        return (
-            f'{self.text[:15]}'
-        )
+        return self.text[:15]
 
 
 class Follow(models.Model):
@@ -99,7 +102,7 @@ class Follow(models.Model):
 
     def clean(self):
         if Follow.objects.filter(user=self.user, author=self.author).exists():
-            raise ValidationError('Повторная подписка')
+            raise ValidationError(RE_FOLLOW_ERROR)
         if self.user == self.author:
-            raise ValidationError('Подписка на себя')
+            raise ValidationError(FOLLOW_TO_YOURSELF_ERROR)
         return True

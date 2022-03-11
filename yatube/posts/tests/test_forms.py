@@ -42,6 +42,11 @@ UPLOADED_IMAGE2 = SimpleUploadedFile(
     content=SMALL_IMAGE,
     content_type='image/gif'
 )
+UPLOADED_IMAGE3 = SimpleUploadedFile(
+    name='small_image3.gif',
+    content=SMALL_IMAGE,
+    content_type='image/gif'
+)
 UNEDITED_TEXT = 'Нередактируемый пост'
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
@@ -66,16 +71,21 @@ class PostFormTest(TestCase):
         cls.post = Post.objects.create(
             author=cls.user,
             text=POST_TEXT,
-            group=cls.group1
+            group=cls.group1,
+            image=UPLOADED_IMAGE
         )
         cls.EDIT = reverse('posts:post_edit', args=[cls.post.pk])
         cls.DETAIL = reverse('posts:post_detail', args=[cls.post.pk])
         cls.ADD_COMMENT = reverse('posts:add_comment', args=[cls.post.pk])
+        cls.CREATE_POST_REDIRECT_GUEST = f'{LOGIN}?next={CREATE}'
+        cls.COMMENT_REDIRECT_GUEST = f'{LOGIN}?next={cls.ADD_COMMENT}'
         cls.authorized_client = Client()
         cls.authorized_client.force_login(cls.user)
-        cls.guest = Client()
         cls.another = Client()
         cls.another.force_login(cls.not_author)
+
+    def setUp(self):
+        self.guest = Client()
 
     @classmethod
     def tearDownClass(cls):
@@ -92,7 +102,7 @@ class PostFormTest(TestCase):
         form_data = {
             'text': NEW_POST_TEXT,
             'group': self.group1.pk,
-            'image': UPLOADED_IMAGE
+            'image': UPLOADED_IMAGE3
         }
         response = self.authorized_client.post(
             CREATE,
@@ -107,10 +117,8 @@ class PostFormTest(TestCase):
         self.assertEqual(post.text, form_data['text'])
         self.assertEqual(post.group.pk, form_data['group'])
         self.assertEqual(post.author, self.user)
-        self.assertEqual(post.author, self.user)
-        post_image_name = post.image.name
         self.assertEqual(
-            post_image_name[post_image_name.find('/') + 1:],
+            post.image.name.split('/')[-1],
             form_data['image'].name
         )
 
@@ -125,12 +133,12 @@ class PostFormTest(TestCase):
             'group': self.group1.pk,
             'image': UPLOADED_IMAGE
         }
-        response = self.authorized_client.post(
+        response = self.guest.post(
             CREATE,
             data=form_data,
             follow=True
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, self.CREATE_POST_REDIRECT_GUEST)
         self.assertEqual(existing_posts, set(Post.objects.all()))
 
     def test_edit_post(self):
@@ -155,50 +163,37 @@ class PostFormTest(TestCase):
         self.assertEqual(post.text, form_data['text'])
         self.assertEqual(post.group.pk, form_data['group'])
         self.assertEqual(post.author, self.post.author)
-        post_image_name = post.image.name
         self.assertEqual(
-            post_image_name[post_image_name.find('/') + 1:],
+            post.image.name.split('/')[-1],
             form_data['image'].name
         )
 
-    def test_guest_can_not_edit_post(self):
+    def test_guest_and_another_can_not_edit_post(self):
         '''
         При отправке валидной формы со страницы редактирования поста
         гость и не автор не измененяют пост в базе данных.
         '''
-        unedited_post = Post.objects.create(
-            text=UNEDITED_TEXT,
-            group=self.group1,
-            author=self.user,
-            image=UPLOADED_IMAGE
-        )
-        EDIT2 = reverse('posts:post_edit', args=[unedited_post.pk])
-        POST_DETAIL = reverse('posts:post_detail', args=[unedited_post.pk])
         form_data = {
             'text': EDIT_POST_TEXT,
             'group': self.group2.pk,
             'image': UPLOADED_IMAGE2
         }
         clients = [
-            [self.guest, LOGIN + '?next=' + EDIT2],
-            [self.another, POST_DETAIL]
+            [self.guest, f'{LOGIN}?next={self.EDIT}'],
+            [self.another, self.DETAIL]
         ]
         for client, redirect in clients:
             with self.subTest(client=client):
                 response = client.post(
-                    EDIT2,
+                    self.EDIT,
                     data=form_data,
                     follow=True
                 )
                 self.assertRedirects(response, redirect)
-                post = Post.objects.get(pk=unedited_post.pk)
-                self.assertEqual(post.text, unedited_post.text)
-                self.assertEqual(post.group, unedited_post.group)
-                self.assertEqual(post.author, unedited_post.author)
-                self.assertEqual(
-                    post.image.name,
-                    unedited_post.image.name
-                )
+                post = Post.objects.get(pk=self.post.pk)
+                self.assertEqual(post.text, self.post.text)
+                self.assertEqual(post.group, self.post.group)
+                self.assertEqual(post.image, self.post.image)
 
     def test_pages_show_correct_form(self):
         "Проверка формы страниц"
