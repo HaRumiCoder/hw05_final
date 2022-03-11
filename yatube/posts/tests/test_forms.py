@@ -196,7 +196,7 @@ class PostFormTest(TestCase):
                 self.assertEqual(post.image, self.post.image)
 
     def test_pages_show_correct_form(self):
-        "Проверка формы страниц"
+        "Проверка формы страниц."
         urls = [
             CREATE,
             self.EDIT

@@ -116,7 +116,7 @@ class PostViewsTests(TestCase):
                 self.assertNotIn(self.post, response.context["page_obj"])
 
     def test_group_show_correct_context(self):
-        "Проверка контекста страницы post_detail"
+        "Проверка контекста страницы post_detail."
         response = self.authorized_client.get(GROUP_LIST)
         group = response.context["group"]
         self.assertEqual(group.title, self.group.title)
@@ -125,7 +125,7 @@ class PostViewsTests(TestCase):
         self.assertEqual(group.pk, self.group.pk)
 
     def test_profile_show_correct_context(self):
-        "Проверка контекста страницы post_detail"
+        "Проверка контекста страницы post_detail."
         response = self.authorized_client.get(PROFILE)
         self.assertEqual(response.context["author"], self.user)
 
@@ -157,6 +157,7 @@ class PostViewsTests(TestCase):
                 self.assertEqual(len(response.context["page_obj"]), contains)
 
     def test_index_cache(self):
+        '''Проверка кэша на странице index.'''
         response1 = self.authorized_client.get(INDEX)
         Post.objects.all().delete()
         response2 = self.authorized_client.get(INDEX)
